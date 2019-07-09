@@ -51,7 +51,7 @@ set(PRIVATE_HDRS
 # OpenGL / OpenGL ES Sources
 # ==================================================================================================
 
-if (NOT USE_EXTERNAL_GLES3)
+if (NOT USE_EXTERNAL_GLES3 AND FILAMENT_SUPPORTS_OPENGL)
     list(APPEND SRCS
             src/opengl/gl_headers.cpp
             src/opengl/gl_headers.h

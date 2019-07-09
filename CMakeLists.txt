@@ -250,6 +250,11 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebIn
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTNT_DEV")
 endif()
 
+option(FILAMENT_SUPPORTS_OPENGL "Include the OpenGL backend" ON)
+if (FILAMENT_SUPPORTS_OPENGL)
+    add_definitions(-DFILAMENT_SUPPORTS_OPENGL)
+endif()
+
 # By default, build with Vulkan support on desktop platforms, although clients must request to use
 # it at run time. On Android, the build does not include Vulkan support unless CMake is invoked
 # with -DFILAMENT_SUPPORTS_VULKAN=ON.

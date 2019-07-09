@@ -17,35 +17,35 @@
 #include <backend/Platform.h>
 
 #if defined(ANDROID)
-    #ifndef USE_EXTERNAL_GLES3
+    #if !defined(USE_EXTERNAL_GLES3) && defined (FILAMENT_SUPPORTS_OPENGL)
         #include "opengl/PlatformEGL.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkAndroid.h"
     #endif
 #elif defined(IOS)
-    #ifndef USE_EXTERNAL_GLES3
+    #if !defined(USE_EXTERNAL_GLES3) && defined (FILAMENT_SUPPORTS_OPENGL)
         #include "opengl/PlatformCocoaTouchGL.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkCocoaTouch.h"
     #endif
 #elif defined(__APPLE__)
-    #ifndef USE_EXTERNAL_GLES3
+    #if !defined(USE_EXTERNAL_GLES3) && defined (FILAMENT_SUPPORTS_OPENGL)
         #include "opengl/PlatformCocoaGL.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkCocoa.h"
     #endif
 #elif defined(__linux__)
-    #ifndef USE_EXTERNAL_GLES3
+    #if !defined(USE_EXTERNAL_GLES3) && defined (FILAMENT_SUPPORTS_OPENGL)
         #include "opengl/PlatformGLX.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
         #include "vulkan/PlatformVkLinux.h"
     #endif
 #elif defined(WIN32)
-    #ifndef USE_EXTERNAL_GLES3
+    #if !defined(USE_EXTERNAL_GLES3) && defined (FILAMENT_SUPPORTS_OPENGL)
         #include "opengl/PlatformWGL.h"
     #endif
     #if defined (FILAMENT_DRIVER_SUPPORTS_VULKAN)
@@ -108,6 +108,7 @@ DefaultPlatform* DefaultPlatform::create(Backend* backend) noexcept {
         return nullptr;
 #endif
     }
+#if defined(FILAMENT_SUPPORTS_OPENGL)
     #if defined(USE_EXTERNAL_GLES3)
         return nullptr;
     #elif defined(ANDROID)
@@ -125,6 +126,7 @@ DefaultPlatform* DefaultPlatform::create(Backend* backend) noexcept {
     #else
         return new PlatformDummyGL();
     #endif
+#endif
     return nullptr;
 }
 
