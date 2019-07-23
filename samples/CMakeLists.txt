@@ -32,6 +32,7 @@ add_mesh("assets/models/monkey/monkey.obj" "suzanne.filamesh")
 set(MATERIAL_SRCS
         materials/bakedColor.mat
         materials/bakedTexture.mat
+        materials/samplerExternal.mat
         materials/pointSprites.mat
         materials/aoPreview.mat
         materials/aiDefaultMat.mat
@@ -302,6 +303,7 @@ if (FILAMENT_SUPPORTS_VULKAN)
     add_filamesh_demo(vk_imgui)
     add_filamesh_demo(vk_strobecolor)
     add_filamesh_demo(vk_texturedquad)
+    add_filamesh_demo(samplerExternal)
     add_filamesh_demo(vk_vbotest)
     add_filamesh_demo(vk_viewtest)
 endif()

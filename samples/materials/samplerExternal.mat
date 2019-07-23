@@ -1,0 +1,20 @@
+material {
+    name : samplerExternalTexture,
+    parameters : [
+        {
+            type : samplerExternal,
+            name : albedoBen
+        }
+    ],
+    requires : [
+        uv0
+    ],
+    shadingModel : unlit,
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+        material.baseColor.rgb = texture(materialParams_albedoBen, getUV0()).rgb;
+    }
+}
