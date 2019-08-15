@@ -363,9 +363,9 @@ function build_android {
     INSTALL_COMMAND=${old_install_command}
 
     build_android_arch "aarch64" "aarch64-linux-android"
-    build_android_arch "arm7" "arm-linux-androideabi"
-    build_android_arch "x86_64" "x86_64-linux-android"
-    build_android_arch "x86" "i686-linux-android"
+    # build_android_arch "arm7" "arm-linux-androideabi"
+    # build_android_arch "x86_64" "x86_64-linux-android"
+    # build_android_arch "x86" "i686-linux-android"
 
     if [[ "$ISSUE_DEBUG_BUILD" == "true" ]]; then
         archive_android "Debug"

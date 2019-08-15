@@ -97,6 +97,4 @@ target_link_libraries(gltfio-jni
         log
 )
 
-if (FILAMENT_SUPPORTS_VULKAN)
-    target_link_libraries(gltfio-jni bluevk smol-v)
-endif()
+target_link_libraries(gltfio-jni bluevk smol-v)

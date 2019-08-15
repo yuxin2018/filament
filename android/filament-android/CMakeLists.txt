@@ -99,8 +99,4 @@ target_link_libraries(filament-jni
       jnigraphics
 )
 
-option(FILAMENT_SUPPORTS_VULKAN "Enables Vulkan on Android" OFF)
-
-if (FILAMENT_SUPPORTS_VULKAN)
-    target_link_libraries(filament-jni bluevk smol-v)
-endif()
+target_link_libraries(filament-jni bluevk smol-v)

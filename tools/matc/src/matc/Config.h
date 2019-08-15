@@ -120,7 +120,7 @@ public:
     }
 
 protected:
-    bool mDebug = false;
+    bool mDebug = true;
     bool mIsValid = true;
     bool mPrintShaders = false;
     Optimization mOptimizationLevel = Optimization::PERFORMANCE;
