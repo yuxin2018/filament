@@ -89,6 +89,7 @@ Driver* PlatformWGL::createDriver(void* const sharedGLContext) noexcept {
         0,
         0, 0, 0
     };
+    mPfd.cAlphaBits = 8;
 
     int attribs[] = {
         WGL_CONTEXT_MAJOR_VERSION_ARB, 4,

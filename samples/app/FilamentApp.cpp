@@ -139,6 +139,7 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
     if (mIBL != nullptr) {
         mIBL->getSkybox()->setLayerMask(0x7, 0x4);
         mScene->setSkybox(mIBL->getSkybox());
+        mScene->setSkybox(nullptr); // hide the skybox
         mScene->setIndirectLight(mIBL->getIndirectLight());
     }
 
@@ -347,7 +348,7 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
             float timeStep = mTime > 0 ? (float)((double)(now - mTime) / frequency) :
                     (float)(1.0f / 60.0f);
             mTime = now;
-            mImGuiHelper->render(timeStep, imguiCallback);
+            // mImGuiHelper->render(timeStep, imguiCallback);
         }
 
         // Update the position and orientation of the two cameras.
@@ -380,6 +381,17 @@ void FilamentApp::run(const Config& config, SetupCallback setupCallback,
                 renderer->render(view->getView());
             }
             renderer->endFrame();
+
+            // Read a 100 x 100 pixel region from the framebuffer.
+            size_t size = sizeof(uint8_t) * 4 * 100 * 100;
+            void* buffer = malloc(size);
+            Texture::PixelBufferDescriptor p(buffer, size, Texture::Format::RGBA, Texture::Type::UBYTE,
+                    [](void* buffer, size_t size, void* user) {
+                uint8_t* pixels = (uint8_t*) buffer;
+                printf("%d, %d, %d, %d\n", pixels[0], pixels[1], pixels[2], pixels[3]);
+                free(buffer);
+            }, nullptr);
+            renderer->readPixels(0, 0, 100, 100, std::move(p));
         } else {
             ++mSkippedFrames;
         }
@@ -491,7 +503,7 @@ FilamentApp::Window::Window(FilamentApp* filamentApp,
 
 #endif
 
-    mSwapChain = mFilamentApp->mEngine->createSwapChain(nativeSwapChain);
+    mSwapChain = mFilamentApp->mEngine->createSwapChain(nativeSwapChain, SwapChain::CONFIG_TRANSPARENT);
     mRenderer = mFilamentApp->mEngine->createRenderer();
 
     // create cameras
