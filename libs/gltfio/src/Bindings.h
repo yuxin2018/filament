@@ -55,6 +55,7 @@ struct BufferBinding {
 
     bool isMorphTarget;
     uint8_t morphTargetIndex;
+    bool dracoMesh;
 };
 
 /**

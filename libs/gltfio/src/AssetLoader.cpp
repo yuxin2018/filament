@@ -201,6 +201,7 @@ FilamentAsset* FAssetLoader::createAssetFromBinary(const uint8_t* bytes, uint32_
 }
 
 void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
+    #if !GLTFIO_DRACO_SUPPORTED
     for (cgltf_size i = 0; i < srcAsset->extensions_required_count; i++) {
         if (!strcmp(srcAsset->extensions_required[i], "KHR_draco_mesh_compression")) {
             slog.e << "KHR_draco_mesh_compression is not supported." << io::endl;
@@ -208,6 +209,7 @@ void FAssetLoader::createAsset(const cgltf_data* srcAsset) {
             return;
         }
     }
+    #endif
 
     mResult = new FFilamentAsset(mEngine, mNameManager);
     mResult->mSourceAsset = srcAsset;
@@ -451,16 +453,26 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
         ibb.bufferType(indexType);
         indices = ibb.build(*mEngine);
         const cgltf_buffer_view* bv = indicesAccessor->buffer_view;
-        mResult->mBufferBindings.emplace_back(BufferBinding {
-            .uri = bv->buffer->uri,
-            .totalSize = uint32_t(bv->buffer->size),
-            .offset = computeBindingOffset(indicesAccessor),
-            .size = computeBindingSize(indicesAccessor),
-            .data = &bv->buffer->data,
-            .indexBuffer = indices,
-            .convertBytesToShorts = indicesAccessor->component_type == cgltf_component_type_r_8u,
-            .generateTrivialIndices = false
-        });
+        bool convertBytesToShorts = indicesAccessor->component_type == cgltf_component_type_r_8u;
+        if (!bv->buffer) {
+            mResult->mBufferBindings.emplace_back(BufferBinding {
+                .offset = computeBindingOffset(indicesAccessor),
+                .size = computeBindingSize(indicesAccessor),
+                .indexBuffer = indices,
+                .convertBytesToShorts = convertBytesToShorts
+            });
+        } else {
+            mResult->mBufferBindings.emplace_back(BufferBinding {
+                .uri = bv->buffer->uri,
+                .totalSize = uint32_t(bv->buffer->size),
+                .offset = computeBindingOffset(indicesAccessor),
+                .size = computeBindingSize(indicesAccessor),
+                .data = &bv->buffer->data,
+                .indexBuffer = indices,
+                .convertBytesToShorts = convertBytesToShorts,
+                .generateTrivialIndices = false
+            });
+        }
     } else {
         const cgltf_size vertexCount = inPrim->attributes[0].data->count;
         indices = IndexBuffer::Builder()
@@ -653,6 +665,18 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
 
     VertexBuffer* vertices = mResult->mPrimMap[inPrim] = vbb.build(*mEngine);
     mResult->mVertexBuffers.push_back(vertices);
+
+    // If this primitive has a draco mesh, add a BufferBinding for the decompressed data.
+    if (inPrim->has_draco_mesh_compression) {
+        const cgltf_buffer_view* bv = inPrim->draco_mesh_compression.buffer_view;
+        mResult->mBufferBindings.emplace_back(BufferBinding {
+            .uri = bv->buffer->uri,
+            .totalSize = uint32_t(bv->buffer->size),
+            .vertexBuffer = vertices,
+            .data = &bv->buffer->data,
+            .dracoMesh = true
+        });
+    }
 
     slot = 0;
     for (cgltf_size aindex = 0; aindex < inPrim->attributes_count; aindex++) {

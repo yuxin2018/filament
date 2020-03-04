@@ -20,6 +20,10 @@
 #include "FFilamentAsset.h"
 #include "upcast.h"
 
+#if GLTFIO_DRACO_SUPPORTED
+#include "DracoMesh.h"
+#endif
+
 #include <filament/Engine.h>
 #include <filament/IndexBuffer.h>
 #include <filament/MaterialInstance.h>
@@ -153,14 +157,6 @@ private:
 
 using namespace details;
 
-ResourceLoader::ResourceLoader(const ResourceConfiguration& config) :
-        mPool(new AssetPool), pImpl(new Impl(config)) { }
-
-ResourceLoader::~ResourceLoader() {
-    mPool->onLoaderDestroyed();
-    delete pImpl;
-}
-
 static void importSkinningData(Skin& dstSkin, const cgltf_skin& srcSkin) {
     const cgltf_accessor* srcMatrices = srcSkin.inverse_bind_matrices;
     dstSkin.inverseBindMatrices.resize(srcSkin.joints_count);
@@ -170,14 +166,6 @@ static void importSkinningData(Skin& dstSkin, const cgltf_skin& srcSkin) {
         auto srcBuffer = (void*) (bytes + srcMatrices->offset + srcMatrices->buffer_view->offset);
         memcpy(dstMatrices, srcBuffer, srcSkin.joints_count * sizeof(mat4f));
     }
-}
-
-void ResourceLoader::addResourceData(const char* uri, BufferDescriptor&& buffer) {
-    pImpl->mUriDataCache.emplace(uri, std::move(buffer));
-}
-
-bool ResourceLoader::hasResourceData(const char* uri) const {
-    return pImpl->mUriDataCache.find(uri) != pImpl->mUriDataCache.end();
 }
 
 static void convertBytesToShorts(uint16_t* dst, const uint8_t* src, size_t count) {
@@ -190,6 +178,22 @@ static void generateTrivialIndices(uint32_t* dst, size_t numVertices) {
     for (size_t i = 0; i < numVertices; ++i) {
         dst[i] = i;
     }
+}
+
+ResourceLoader::ResourceLoader(const ResourceConfiguration& config) :
+        mPool(new AssetPool), pImpl(new Impl(config)) { }
+
+ResourceLoader::~ResourceLoader() {
+    mPool->onLoaderDestroyed();
+    delete pImpl;
+}
+
+void ResourceLoader::addResourceData(const char* uri, BufferDescriptor&& buffer) {
+    pImpl->mUriDataCache.emplace(uri, std::move(buffer));
+}
+
+bool ResourceLoader::hasResourceData(const char* uri) const {
+    return pImpl->mUriDataCache.find(uri) != pImpl->mUriDataCache.end();
 }
 
 bool ResourceLoader::loadResources(FilamentAsset* asset) {
@@ -301,9 +305,12 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
     const BufferBinding* bindings = asset->getBufferBindings();
     bool needsTangents = false;
     bool needsSparseData = false;
+    bool needsDracoDecoding = false;
     for (size_t i = 0, n = asset->getBufferBindingCount(); i < n; ++i) {
         auto bb = bindings[i];
-        if (bb.vertexBuffer && bb.generateTangents) {
+        if (bb.vertexBuffer && bb.dracoMesh && GLTFIO_DRACO_SUPPORTED) {
+            needsDracoDecoding = true;
+        } else if (bb.vertexBuffer && bb.generateTangents) {
             needsTangents = true;
         } else if (bb.vertexBuffer && bb.sparseAccessor) {
             needsSparseData = true;
@@ -337,7 +344,12 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
         }
     }
 
-    // Copy over the inverse bind matrices to allow users to destroy the source asset.
+    // First, decode draco meshes if necessary. This should be done before computing tangents etc.
+    if (needsDracoDecoding) {
+        decodeDracoMeshes(asset);
+    }
+
+    // Copy over the inverse bind matrices.
     for (cgltf_size i = 0, len = gltf->skins_count; i < len; ++i) {
         importSkinningData(asset->mSkins[i], gltf->skins[i]);
     }
@@ -804,23 +816,18 @@ void ResourceLoader::computeTangents(FFilamentAsset* asset) const {
     }
 
     // Go through all cgltf primitives and populate their tangents if requested.
-    for (auto iter : asset->mNodeMap) {
-        const cgltf_mesh* mesh = iter.first->mesh;
-        if (mesh) {
-            cgltf_size nprims = mesh->primitives_count;
-            for (cgltf_size index = 0; index < nprims; ++index) {
-                VertexBuffer* vb = asset->mPrimMap.at(mesh->primitives + index);
-                auto iter = baseTangents.find(vb);
-                if (iter != baseTangents.end()) {
-                    computeQuats(mesh->primitives[index], vb, iter->second, kMorphTargetUnused);
-                }
-                for (int morphTarget = 0; morphTarget < 4; morphTarget++) {
-                    const auto& tangents = morphTangents[morphTarget];
-                    auto iter = tangents.find(vb);
-                    if (iter != tangents.end()) {
-                        computeQuats(mesh->primitives[index], vb, iter->second, morphTarget);
-                    }
-                }
+    for (auto pair : asset->mPrimMap) {
+        const cgltf_primitive& prim = *pair.first;
+        VertexBuffer* vb = pair.second;
+        auto iter = baseTangents.find(vb);
+        if (iter != baseTangents.end()) {
+            computeQuats(prim, vb, iter->second, kMorphTargetUnused);
+        }
+        for (int morphTarget = 0; morphTarget < 4; morphTarget++) {
+            const auto& tangents = morphTangents[morphTarget];
+            auto iter = tangents.find(vb);
+            if (iter != tangents.end()) {
+                computeQuats(prim, vb, iter->second, morphTarget);
             }
         }
     }
@@ -920,6 +927,36 @@ void ResourceLoader::updateBoundingBoxes(details::FFilamentAsset* asset) const {
     }
 
     asset->mBoundingBox = assetBounds;
+}
+
+void ResourceLoader::decodeDracoMeshes(details::FFilamentAsset* asset) const {
+#if GLTFIO_DRACO_SUPPORTED
+
+    for (auto pair : asset->mPrimMap) {
+        const cgltf_primitive* prim = pair.first;
+        VertexBuffer* vb = pair.second;
+        if (prim->has_draco_mesh_compression) {
+            const cgltf_buffer_view* bv = prim->draco_mesh_compression.buffer_view;
+            const uint8_t* compressedData = (uint8_t*) bv->buffer->data;
+            size_t compressedSize = bv->buffer->size;
+            DracoMeshHandle mesh = DracoMesh::decode(compressedData, compressedSize);
+            if (!mesh) {
+                slog.w << "Cannot decompress mesh, Draco decoding error." << io::endl;
+                return;
+            }
+            for (cgltf_size i = 0; i < prim->attributes_count; i++) {
+                uint32_t id = prim->attributes[i].index;
+                uint8_t* udata;
+                size_t usize;
+                if (!mesh->getAttribute(id, &udata, &usize)) {
+                    slog.w << "Cannot find Draco attribute: " << id << io::endl;
+                    continue;
+                }
+                // TODO...
+            }
+        }
+    }
+#endif
 }
 
 } // namespace gltfio
