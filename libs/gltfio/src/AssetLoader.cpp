@@ -92,11 +92,14 @@ using MatInstanceCache = tsl::robin_map<intptr_t, MaterialEntry>;
 static uint32_t computeBindingSize(const cgltf_accessor* accessor){
     cgltf_size element_size = cgltf_calc_size(accessor->type, accessor->component_type);
     return uint32_t(accessor->stride * (accessor->count - 1) + element_size);
-};
+}
 
 static uint32_t computeBindingOffset(const cgltf_accessor* accessor) {
+    if (!accessor->buffer_view) {
+        return accessor->offset;
+    }
     return uint32_t(accessor->offset + accessor->buffer_view->offset);
-};
+}
 
 struct FAssetLoader : public AssetLoader {
     FAssetLoader(const AssetConfiguration& config) :
@@ -454,7 +457,7 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
         indices = ibb.build(*mEngine);
         const cgltf_buffer_view* bv = indicesAccessor->buffer_view;
         bool convertBytesToShorts = indicesAccessor->component_type == cgltf_component_type_r_8u;
-        if (!bv->buffer) {
+        if (!bv || !bv->buffer) {
             mResult->mBufferBindings.emplace_back(BufferBinding {
                 .offset = computeBindingOffset(indicesAccessor),
                 .size = computeBindingSize(indicesAccessor),
@@ -684,13 +687,21 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
         const cgltf_accessor* inputAccessor = inputAttribute.data;
         const cgltf_buffer_view* bv = inputAccessor->buffer_view;
         mResult->mAccessorMap[inputAccessor].push_back(vertices);
-        if (inputAttribute.type == cgltf_attribute_type_tangent ||
-                (inputAttribute.type == cgltf_attribute_type_texcoord &&
+
+        // Skip over tangents, we use the normals slot for to hold tangents.
+        if (inputAttribute.type == cgltf_attribute_type_tangent) {
+            continue;
+        }
+
+        // Skip over UV sets that get dropped due to our limitation of 2 simultaneous UV sets.
+        if (inputAttribute.type == cgltf_attribute_type_texcoord &&
+                (inputAttribute.index >= sizeof(uvmap) / sizeof(uvmap[0]) ||
                 uvmap[inputAttribute.index] == UNUSED)) {
             continue;
         }
-        if (inputAttribute.type == cgltf_attribute_type_texcoord &&
-                inputAttribute.index >= sizeof(uvmap) / sizeof(uvmap[0])) {
+
+        // Skip the attribute if the buffer view is missing (this is valid for Draco meshes).
+        if (!bv) {
             continue;
         }
 
