@@ -224,6 +224,11 @@ struct FFilamentAsset : public FilamentAsset {
     bool mSharedSourceAsset = false;
     DependencyGraph mDependencyGraph;
 
+    struct BufferSlot {
+        filament::VertexBuffer* vb;
+        int bufferIndex;
+    };
+
     // Transient source data that can freed via releaseSourceData:
     std::vector<BufferBinding> mBufferBindings;
     std::vector<TextureBinding> mTextureBindings;
@@ -231,7 +236,7 @@ struct FFilamentAsset : public FilamentAsset {
     const cgltf_data* mSourceAsset = nullptr;
     tsl::robin_map<const cgltf_node*, utils::Entity> mNodeMap;
     tsl::robin_map<const cgltf_primitive*, filament::VertexBuffer*> mPrimMap;
-    tsl::robin_map<const cgltf_accessor*, std::vector<filament::VertexBuffer*>> mAccessorMap;
+    tsl::robin_map<const cgltf_accessor*, std::vector<BufferSlot>> mAccessorMap;
 };
 
 FILAMENT_UPCAST(FilamentAsset)

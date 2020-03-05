@@ -92,11 +92,11 @@ using MatInstanceCache = tsl::robin_map<intptr_t, MaterialEntry>;
 static uint32_t computeBindingSize(const cgltf_accessor* accessor){
     cgltf_size element_size = cgltf_calc_size(accessor->type, accessor->component_type);
     return uint32_t(accessor->stride * (accessor->count - 1) + element_size);
-};
+}
 
 static uint32_t computeBindingOffset(const cgltf_accessor* accessor) {
     return uint32_t(accessor->offset + accessor->buffer_view->offset);
-};
+}
 
 struct FAssetLoader : public AssetLoader {
     FAssetLoader(const AssetConfiguration& config) :
@@ -659,7 +659,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
         const cgltf_attribute& inputAttribute = inPrim->attributes[aindex];
         const cgltf_accessor* inputAccessor = inputAttribute.data;
         const cgltf_buffer_view* bv = inputAccessor->buffer_view;
-        mResult->mAccessorMap[inputAccessor].push_back(vertices);
         if (inputAttribute.type == cgltf_attribute_type_tangent ||
                 (inputAttribute.type == cgltf_attribute_type_texcoord &&
                 uvmap[inputAttribute.index] == UNUSED)) {
@@ -669,6 +668,8 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                 inputAttribute.index >= sizeof(uvmap) / sizeof(uvmap[0])) {
             continue;
         }
+
+        mResult->mAccessorMap[inputAccessor].push_back({vertices, slot});
 
         if (inputAttribute.type == cgltf_attribute_type_normal) {
             mResult->mBufferBindings.push_back({
@@ -681,10 +682,10 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                 .generateTrivialIndices = false,
                 .generateDummyData = false,
                 .generateTangents = true,
-                .sparseAccessor = (bool) inputAccessor->is_sparse,
             });
             continue;
         }
+
         mResult->mBufferBindings.push_back({
             .uri = bv->buffer->uri,
             .totalSize = uint32_t(bv->buffer->size),
@@ -698,7 +699,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             .generateTrivialIndices = false,
             .generateDummyData = false,
             .generateTangents = false,
-            .sparseAccessor = (bool) inputAccessor->is_sparse,
         });
     }
 
@@ -714,7 +714,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                 .generateTrivialIndices = false,
                 .generateDummyData = false,
                 .generateTangents = true,
-                .sparseAccessor = false,
             });
     }
 
@@ -735,7 +734,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                     .generateTrivialIndices = false,
                     .generateDummyData = false,
                     .generateTangents = true,
-                    .sparseAccessor = (bool) inputAccessor->is_sparse,
                     .isMorphTarget = true,
                     .morphTargetIndex = (uint8_t) targetIndex,
                 });
@@ -759,7 +757,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                 .generateTrivialIndices = false,
                 .generateDummyData = false,
                 .generateTangents = false,
-                .sparseAccessor = (bool) inputAccessor->is_sparse,
             });
         }
     }

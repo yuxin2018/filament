@@ -153,14 +153,6 @@ private:
 
 using namespace details;
 
-ResourceLoader::ResourceLoader(const ResourceConfiguration& config) :
-        mPool(new AssetPool), pImpl(new Impl(config)) { }
-
-ResourceLoader::~ResourceLoader() {
-    mPool->onLoaderDestroyed();
-    delete pImpl;
-}
-
 static void importSkinningData(Skin& dstSkin, const cgltf_skin& srcSkin) {
     const cgltf_accessor* srcMatrices = srcSkin.inverse_bind_matrices;
     dstSkin.inverseBindMatrices.resize(srcSkin.joints_count);
@@ -170,14 +162,6 @@ static void importSkinningData(Skin& dstSkin, const cgltf_skin& srcSkin) {
         auto srcBuffer = (void*) (bytes + srcMatrices->offset + srcMatrices->buffer_view->offset);
         memcpy(dstMatrices, srcBuffer, srcSkin.joints_count * sizeof(mat4f));
     }
-}
-
-void ResourceLoader::addResourceData(const char* uri, BufferDescriptor&& buffer) {
-    pImpl->mUriDataCache.emplace(uri, std::move(buffer));
-}
-
-bool ResourceLoader::hasResourceData(const char* uri) const {
-    return pImpl->mUriDataCache.find(uri) != pImpl->mUriDataCache.end();
 }
 
 static void convertBytesToShorts(uint16_t* dst, const uint8_t* src, size_t count) {
@@ -190,6 +174,22 @@ static void generateTrivialIndices(uint32_t* dst, size_t numVertices) {
     for (size_t i = 0; i < numVertices; ++i) {
         dst[i] = i;
     }
+}
+
+ResourceLoader::ResourceLoader(const ResourceConfiguration& config) :
+        mPool(new AssetPool), pImpl(new Impl(config)) { }
+
+ResourceLoader::~ResourceLoader() {
+    mPool->onLoaderDestroyed();
+    delete pImpl;
+}
+
+void ResourceLoader::addResourceData(const char* uri, BufferDescriptor&& buffer) {
+    pImpl->mUriDataCache.emplace(uri, std::move(buffer));
+}
+
+bool ResourceLoader::hasResourceData(const char* uri) const {
+    return pImpl->mUriDataCache.find(uri) != pImpl->mUriDataCache.end();
 }
 
 bool ResourceLoader::loadResources(FilamentAsset* asset) {
@@ -300,13 +300,10 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
     // Upload data to the GPU.
     const BufferBinding* bindings = asset->getBufferBindings();
     bool needsTangents = false;
-    bool needsSparseData = false;
     for (size_t i = 0, n = asset->getBufferBindingCount(); i < n; ++i) {
         auto bb = bindings[i];
         if (bb.vertexBuffer && bb.generateTangents) {
             needsTangents = true;
-        } else if (bb.vertexBuffer && bb.sparseAccessor) {
-            needsSparseData = true;
         } else if (bb.vertexBuffer && !bb.generateDummyData) {
             const uint8_t* data8 = bb.offset + (const uint8_t*) *bb.data;
             mPool->addPendingUpload();
@@ -343,9 +340,7 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
     }
 
     // Apply sparse data modifications to base arrays, then upload the result.
-    if (needsSparseData) {
-        applySparseData(asset);
-    }
+    applySparseData(asset);
 
     // Compute surface orientation quaternions if necessary. This is similar to sparse data in that
     // we need to generate the contents of a GPU buffer by processing one or more CPU buffer(s).
@@ -628,36 +623,22 @@ ResourceLoader::Impl::~Impl() {
 }
 
 void ResourceLoader::applySparseData(FFilamentAsset* asset) const {
-    auto uploadSparseData = [&](const cgltf_accessor* accessor, VertexBuffer* vb, uint8_t slot) {
-        cgltf_size numFloats = accessor->count * cgltf_num_components(accessor->type);
-        cgltf_size numBytes = sizeof(float) * numFloats;
-        float* generated = (float*) malloc(numBytes);
-        cgltf_accessor_unpack_floats(accessor, generated, numFloats);
-        VertexBuffer::BufferDescriptor bd(generated, numBytes, FREE_CALLBACK);
-        vb->setBufferAt(*pImpl->mEngine, slot, std::move(bd));
-    };
-
-    // Collect all vertex attribute slots that need to be populated.
-    const BufferBinding* bindings = asset->getBufferBindings();
-    tsl::robin_map<VertexBuffer*, uint8_t> sparseBuffers;
-    for (size_t i = 0, n = asset->getBufferBindingCount(); i < n; ++i) {
-        auto bb = bindings[i];
-        if (bb.vertexBuffer && bb.sparseAccessor) {
-            sparseBuffers[bb.vertexBuffer] = bb.bufferIndex;
-        }
-    }
-
-    // Go through all cgltf accessors and apply sparse data if requested.
     for (cgltf_size index = 0; index < asset->mSourceAsset->accessors_count; index++) {
         const cgltf_accessor* accessor = asset->mSourceAsset->accessors + index;
+        if (!accessor->is_sparse) {
+            continue;
+        }
         auto iter = asset->mAccessorMap.find(accessor);
-        if (iter != asset->mAccessorMap.end()) {
-            for (VertexBuffer* vb : iter->second) {
-                auto iter = sparseBuffers.find(vb);
-                if (iter != sparseBuffers.end()) {
-                    uploadSparseData(accessor, vb, iter->second);
-                }
-            }
+        if (iter == asset->mAccessorMap.end()) {
+            continue;
+        }
+        for (auto slot : iter->second) {
+            cgltf_size numFloats = accessor->count * cgltf_num_components(accessor->type);
+            cgltf_size numBytes = sizeof(float) * numFloats;
+            float* generated = (float*) malloc(numBytes);
+            cgltf_accessor_unpack_floats(accessor, generated, numFloats);
+            VertexBuffer::BufferDescriptor bd(generated, numBytes, FREE_CALLBACK);
+            slot.vb->setBufferAt(*pImpl->mEngine, slot.bufferIndex, std::move(bd));
         }
     }
 }
@@ -804,23 +785,18 @@ void ResourceLoader::computeTangents(FFilamentAsset* asset) const {
     }
 
     // Go through all cgltf primitives and populate their tangents if requested.
-    for (auto iter : asset->mNodeMap) {
-        const cgltf_mesh* mesh = iter.first->mesh;
-        if (mesh) {
-            cgltf_size nprims = mesh->primitives_count;
-            for (cgltf_size index = 0; index < nprims; ++index) {
-                VertexBuffer* vb = asset->mPrimMap.at(mesh->primitives + index);
-                auto iter = baseTangents.find(vb);
-                if (iter != baseTangents.end()) {
-                    computeQuats(mesh->primitives[index], vb, iter->second, kMorphTargetUnused);
-                }
-                for (int morphTarget = 0; morphTarget < 4; morphTarget++) {
-                    const auto& tangents = morphTangents[morphTarget];
-                    auto iter = tangents.find(vb);
-                    if (iter != tangents.end()) {
-                        computeQuats(mesh->primitives[index], vb, iter->second, morphTarget);
-                    }
-                }
+    for (auto pair : asset->mPrimMap) {
+        const cgltf_primitive& prim = *pair.first;
+        VertexBuffer* vb = pair.second;
+        auto iter = baseTangents.find(vb);
+        if (iter != baseTangents.end()) {
+            computeQuats(prim, vb, iter->second, kMorphTargetUnused);
+        }
+        for (int morphTarget = 0; morphTarget < 4; morphTarget++) {
+            const auto& tangents = morphTangents[morphTarget];
+            auto iter = tangents.find(vb);
+            if (iter != tangents.end()) {
+                computeQuats(prim, vb, iter->second, morphTarget);
             }
         }
     }
