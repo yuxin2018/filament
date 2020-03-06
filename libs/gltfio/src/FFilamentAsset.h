@@ -224,13 +224,17 @@ struct FFilamentAsset : public FilamentAsset {
     bool mSharedSourceAsset = false;
     DependencyGraph mDependencyGraph;
 
+    // Encapsulates a call to VertexBuffer::setBufferAt().
     struct BufferSlot {
-        const cgltf_accessor* accessor;
+        const cgltf_accessor* accessor; // can be null (e.g. if we need to generate normals)
         cgltf_attribute_type attribute;
         filament::VertexBuffer* vertexBuffer;
         int bufferIndex;
         int morphTarget; // 0 if no morphing, otherwise 1-based index
     };
+
+    cgltf_accessor mGenerateNormals = {};
+    cgltf_accessor mDummyBytes = {};
 
     // Transient source data that can freed via releaseSourceData:
     std::vector<BufferSlot> mBufferSlots;

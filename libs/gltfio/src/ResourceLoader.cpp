@@ -620,7 +620,7 @@ ResourceLoader::Impl::~Impl() {
 void ResourceLoader::applySparseData(FFilamentAsset* asset) const {
     for (auto slot : asset->mBufferSlots) {
         const cgltf_accessor* accessor = slot.accessor;
-        if (!accessor || !accessor->is_sparse) {
+        if (!accessor->is_sparse) {
             continue;
         }
         cgltf_size numFloats = accessor->count * cgltf_num_components(accessor->type);

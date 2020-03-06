@@ -435,6 +435,8 @@ void FAssetLoader::createRenderable(const cgltf_node* node, Entity entity) {
 
 bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* outPrim,
         const UvMap& uvmap, const char* name) {
+    const cgltf_accessor* kGenerateNormals = &mResult->mGenerateNormals;
+    const cgltf_accessor* kGenerateDummyData = &mResult->mDummyBytes;
 
     // In glTF, each primitive may or may not have an index buffer. If a primitive does not have an
     // index buffer, we ask the ResourceLoader to generate a trivial index buffer.
@@ -682,7 +684,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                 .indexBuffer = nullptr,
                 .convertBytesToShorts = false,
                 .generateTrivialIndices = false,
-                .generateDummyData = false,
             });
             continue;
         }
@@ -698,14 +699,13 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             .indexBuffer = nullptr,
             .convertBytesToShorts = false,
             .generateTrivialIndices = false,
-            .generateDummyData = false,
         });
     }
 
     // If the model is lit but does not have normals, we'll need to generate flat normals.
     if (inPrim->material && !inPrim->material->unlit && !hasNormals) {
         auto attribute = cgltf_attribute_type_normal;
-        mResult->mBufferSlots.push_back({nullptr, attribute, vertices, slot});
+        mResult->mBufferSlots.push_back({kGenerateNormals, attribute, vertices, slot});
         mResult->mBufferBindings.push_back({
             .uri = "",
             .totalSize = 0,
@@ -714,7 +714,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             .indexBuffer = nullptr,
             .convertBytesToShorts = false,
             .generateTrivialIndices = false,
-            .generateDummyData = false,
         });
     }
 
@@ -742,7 +741,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                     .indexBuffer = nullptr,
                     .convertBytesToShorts = false,
                     .generateTrivialIndices = false,
-                    .generateDummyData = false,
                     .isMorphTarget = true,
                     .morphTargetIndex = (uint8_t) targetIndex,
                 });
@@ -760,7 +758,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                 .indexBuffer = nullptr,
                 .convertBytesToShorts = false,
                 .generateTrivialIndices = false,
-                .generateDummyData = false,
             });
         }
     }
@@ -777,7 +774,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             .indexBuffer = nullptr,
             .convertBytesToShorts = false,
             .generateTrivialIndices = false,
-            .generateDummyData = true
         });
     }
 
