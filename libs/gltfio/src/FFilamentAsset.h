@@ -234,7 +234,6 @@ struct FFilamentAsset : public FilamentAsset {
     };
 
     cgltf_accessor mGenerateNormals = {};
-    cgltf_accessor mDummyBytes = {};
 
     // Transient source data that can freed via releaseSourceData:
     std::vector<BufferSlot> mBufferSlots;

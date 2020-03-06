@@ -53,6 +53,8 @@ using namespace filament;
 using namespace filament::math;
 using namespace utils;
 
+static const auto FREE_CALLBACK = [](void* mem, size_t, void*) { free(mem); };
+
 namespace gltfio {
 namespace details {
 
@@ -436,7 +438,6 @@ void FAssetLoader::createRenderable(const cgltf_node* node, Entity entity) {
 bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* outPrim,
         const UvMap& uvmap, const char* name) {
     const cgltf_accessor* kGenerateNormals = &mResult->mGenerateNormals;
-    const cgltf_accessor* kGenerateDummyData = &mResult->mDummyBytes;
 
     // In glTF, each primitive may or may not have an index buffer. If a primitive does not have an
     // index buffer, we ask the ResourceLoader to generate a trivial index buffer.
@@ -763,18 +764,11 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
     }
 
     if (needsDummyData) {
-        mResult->mBufferBindings.push_back({
-            .uri = "",
-            .totalSize = uint32_t(sizeof(ubyte4) * vertexCount),
-            .bufferIndex = uint8_t(slot++),
-            .offset = 0,
-            .size = uint32_t(sizeof(ubyte4) * vertexCount),
-            .data = nullptr,
-            .vertexBuffer = vertices,
-            .indexBuffer = nullptr,
-            .convertBytesToShorts = false,
-            .generateTrivialIndices = false,
-        });
+        uint32_t size = sizeof(ubyte4) * vertexCount;
+        uint32_t* dummyData = (uint32_t*) malloc(size);
+        memset(dummyData, 0xff, size);
+        VertexBuffer::BufferDescriptor bd(dummyData, size, FREE_CALLBACK);
+        vertices->setBufferAt(*mEngine, slot++, std::move(bd));
     }
 
     assert(bufferCount == slot);

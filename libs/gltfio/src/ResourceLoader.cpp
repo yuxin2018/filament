@@ -306,11 +306,6 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
             mPool->addPendingUpload();
             VertexBuffer::BufferDescriptor bd(data8, bb.size, AssetPool::onLoadedResource, mPool);
             bb.vertexBuffer->setBufferAt(engine, bb.bufferIndex, std::move(bd));
-        } else if (bb.vertexBuffer) {
-            uint32_t* dummyData = (uint32_t*) malloc(bb.size);
-            memset(dummyData, 0xff, bb.size);
-            VertexBuffer::BufferDescriptor bd(dummyData, bb.size, FREE_CALLBACK);
-            bb.vertexBuffer->setBufferAt(engine, bb.bufferIndex, std::move(bd));
         } else if (bb.generateTrivialIndices) {
             uint32_t* data32 = (uint32_t*) malloc(bb.size);
             generateTrivialIndices(data32, bb.size / sizeof(uint32_t));
