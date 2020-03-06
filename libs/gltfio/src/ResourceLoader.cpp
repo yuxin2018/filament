@@ -111,6 +111,8 @@ struct ResourceLoader::Impl {
 
 namespace details {
 
+uint32_t computeBindingSize(const cgltf_accessor* accessor);
+
 // The AssetPool tracks references to raw source data (cgltf hierarchies) and frees them
 // appropriately. It releases all source assets only after the pending upload count is zero and the
 // client has destroyed the ResourceLoader object. If the ResourceLoader is destroyed while uploads
@@ -174,6 +176,10 @@ static void generateTrivialIndices(uint32_t* dst, size_t numVertices) {
     for (size_t i = 0; i < numVertices; ++i) {
         dst[i] = i;
     }
+}
+
+static uint32_t computeBindingOffset(const cgltf_accessor* accessor) {
+    return uint32_t(accessor->offset + accessor->buffer_view->offset);
 }
 
 ResourceLoader::ResourceLoader(const ResourceConfiguration& config) :
@@ -297,16 +303,26 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
 
     Engine& engine = *pImpl->mEngine;
 
-    // Upload data to the GPU.
+    // Upload VertexBuffer data to the GPU.
+
+    for (auto slot : asset->mBufferSlots) {
+        const cgltf_accessor* accessor = slot.accessor;
+        if (accessor->buffer_view) {
+            auto bufferData = (const uint8_t*) accessor->buffer_view->buffer->data;
+            const uint8_t* data = computeBindingOffset(accessor) + bufferData;
+            const uint32_t size = computeBindingSize(accessor);
+            mPool->addPendingUpload();
+            VertexBuffer::BufferDescriptor bd(data, size, AssetPool::onLoadedResource, mPool);
+            slot.vertexBuffer->setBufferAt(engine, slot.bufferIndex, std::move(bd));
+        }
+    }
+
+    // Upload IndexBuffer data to the GPU.
+
     const BufferBinding* bindings = asset->getBufferBindings();
     for (size_t i = 0, n = asset->getBufferBindingCount(); i < n; ++i) {
         auto bb = bindings[i];
-        if (bb.vertexBuffer && bb.data) {
-            const uint8_t* data8 = bb.offset + (const uint8_t*) *bb.data;
-            mPool->addPendingUpload();
-            VertexBuffer::BufferDescriptor bd(data8, bb.size, AssetPool::onLoadedResource, mPool);
-            bb.vertexBuffer->setBufferAt(engine, bb.bufferIndex, std::move(bd));
-        } else if (bb.generateTrivialIndices) {
+        if (bb.generateTrivialIndices) {
             uint32_t* data32 = (uint32_t*) malloc(bb.size);
             generateTrivialIndices(data32, bb.size / sizeof(uint32_t));
             IndexBuffer::BufferDescriptor bd(data32, bb.size, FREE_CALLBACK);
@@ -326,7 +342,7 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
         }
     }
 
-    // Copy over the inverse bind matrices to allow users to destroy the source asset.
+    // Copy over the inverse bind matrices.
     for (cgltf_size i = 0, len = gltf->skins_count; i < len; ++i) {
         importSkinningData(asset->mSkins[i], gltf->skins[i]);
     }
@@ -628,6 +644,9 @@ void ResourceLoader::applySparseData(FFilamentAsset* asset) const {
 }
 
 void ResourceLoader::computeTangents(FFilamentAsset* asset) const {
+    const cgltf_accessor* kGenerateTangents = &asset->mGenerateTangents;
+    const cgltf_accessor* kGenerateNormals = &asset->mGenerateNormals;
+
     // Declare vectors of normals and tangents, which we'll extract & convert from the source.
     std::vector<float3> fp32Normals;
     std::vector<float4> fp32Tangents;
@@ -757,7 +776,7 @@ void ResourceLoader::computeTangents(FFilamentAsset* asset) const {
     tsl::robin_map<VertexBuffer*, uint8_t> baseTangents;
     tsl::robin_map<VertexBuffer*, uint8_t> morphTangents[4];
     for (auto slot : asset->mBufferSlots) {
-        if (slot.attribute != cgltf_attribute_type_normal) {
+        if (slot.accessor != kGenerateTangents && slot.accessor != kGenerateNormals) {
             continue;
         }
         if (slot.morphTarget) {
