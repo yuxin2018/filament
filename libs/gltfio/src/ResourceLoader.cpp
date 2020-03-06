@@ -299,12 +299,9 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
 
     // Upload data to the GPU.
     const BufferBinding* bindings = asset->getBufferBindings();
-    bool needsTangents = false;
     for (size_t i = 0, n = asset->getBufferBindingCount(); i < n; ++i) {
         auto bb = bindings[i];
-        if (bb.vertexBuffer && bb.generateTangents) {
-            needsTangents = true;
-        } else if (bb.vertexBuffer && !bb.generateDummyData) {
+        if (bb.vertexBuffer && bb.data) {
             const uint8_t* data8 = bb.offset + (const uint8_t*) *bb.data;
             mPool->addPendingUpload();
             VertexBuffer::BufferDescriptor bd(data8, bb.size, AssetPool::onLoadedResource, mPool);
@@ -344,9 +341,7 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
 
     // Compute surface orientation quaternions if necessary. This is similar to sparse data in that
     // we need to generate the contents of a GPU buffer by processing one or more CPU buffer(s).
-    if (needsTangents) {
-        computeTangents(asset);
-    }
+    computeTangents(asset);
 
     // Non-textured renderables are now considered ready, so notify the dep graph.
     asset->mDependencyGraph.finalize();
@@ -623,23 +618,17 @@ ResourceLoader::Impl::~Impl() {
 }
 
 void ResourceLoader::applySparseData(FFilamentAsset* asset) const {
-    for (cgltf_size index = 0; index < asset->mSourceAsset->accessors_count; index++) {
-        const cgltf_accessor* accessor = asset->mSourceAsset->accessors + index;
-        if (!accessor->is_sparse) {
+    for (auto slot : asset->mBufferSlots) {
+        const cgltf_accessor* accessor = slot.accessor;
+        if (!accessor || !accessor->is_sparse) {
             continue;
         }
-        auto iter = asset->mAccessorMap.find(accessor);
-        if (iter == asset->mAccessorMap.end()) {
-            continue;
-        }
-        for (auto slot : iter->second) {
-            cgltf_size numFloats = accessor->count * cgltf_num_components(accessor->type);
-            cgltf_size numBytes = sizeof(float) * numFloats;
-            float* generated = (float*) malloc(numBytes);
-            cgltf_accessor_unpack_floats(accessor, generated, numFloats);
-            VertexBuffer::BufferDescriptor bd(generated, numBytes, FREE_CALLBACK);
-            slot.vb->setBufferAt(*pImpl->mEngine, slot.bufferIndex, std::move(bd));
-        }
+        cgltf_size numFloats = accessor->count * cgltf_num_components(accessor->type);
+        cgltf_size numBytes = sizeof(float) * numFloats;
+        float* generated = (float*) malloc(numBytes);
+        cgltf_accessor_unpack_floats(accessor, generated, numFloats);
+        VertexBuffer::BufferDescriptor bd(generated, numBytes, FREE_CALLBACK);
+        slot.vertexBuffer->setBufferAt(*pImpl->mEngine, slot.bufferIndex, std::move(bd));
     }
 }
 
@@ -772,16 +761,15 @@ void ResourceLoader::computeTangents(FFilamentAsset* asset) const {
     // Collect all TANGENT vertex attribute slots that need to be populated.
     tsl::robin_map<VertexBuffer*, uint8_t> baseTangents;
     tsl::robin_map<VertexBuffer*, uint8_t> morphTangents[4];
-    const BufferBinding* bindings = asset->getBufferBindings();
-    for (size_t i = 0, n = asset->getBufferBindingCount(); i < n; ++i) {
-        auto bb = bindings[i];
-        if (bb.vertexBuffer && bb.generateTangents) {
-            if (bb.isMorphTarget) {
-                morphTangents[bb.morphTargetIndex][bb.vertexBuffer] = bb.bufferIndex;
-            } else {
-                baseTangents[bb.vertexBuffer] = bb.bufferIndex;
-            }
+    for (auto slot : asset->mBufferSlots) {
+        if (slot.attribute != cgltf_attribute_type_normal) {
+            continue;
         }
+        if (slot.morphTarget) {
+            morphTangents[slot.morphTarget - 1][slot.vertexBuffer] = slot.bufferIndex;
+            continue;
+        }
+        baseTangents[slot.vertexBuffer] = slot.bufferIndex;
     }
 
     // Go through all cgltf primitives and populate their tangents if requested.

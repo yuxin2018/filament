@@ -659,19 +659,21 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
         const cgltf_attribute& inputAttribute = inPrim->attributes[aindex];
         const cgltf_accessor* inputAccessor = inputAttribute.data;
         const cgltf_buffer_view* bv = inputAccessor->buffer_view;
-        if (inputAttribute.type == cgltf_attribute_type_tangent ||
-                (inputAttribute.type == cgltf_attribute_type_texcoord &&
-                uvmap[inputAttribute.index] == UNUSED)) {
-            continue;
-        }
-        if (inputAttribute.type == cgltf_attribute_type_texcoord &&
-                inputAttribute.index >= sizeof(uvmap) / sizeof(uvmap[0])) {
+        const cgltf_attribute_type attribute = inputAttribute.type;
+
+        if (attribute == cgltf_attribute_type_tangent) {
             continue;
         }
 
-        mResult->mAccessorMap[inputAccessor].push_back({vertices, slot});
+        if (attribute == cgltf_attribute_type_texcoord) {
+            if (inputAttribute.index >= UvMapSize || uvmap[inputAttribute.index] == UNUSED) {
+            continue;
+            }
+        }
 
-        if (inputAttribute.type == cgltf_attribute_type_normal) {
+        mResult->mBufferSlots.push_back({inputAccessor, attribute, vertices, slot});
+
+        if (attribute == cgltf_attribute_type_normal) {
             mResult->mBufferBindings.push_back({
                 .uri = bv->buffer->uri,
                 .totalSize = uint32_t(bv->buffer->size),
@@ -681,7 +683,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                 .convertBytesToShorts = false,
                 .generateTrivialIndices = false,
                 .generateDummyData = false,
-                .generateTangents = true,
             });
             continue;
         }
@@ -698,23 +699,23 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             .convertBytesToShorts = false,
             .generateTrivialIndices = false,
             .generateDummyData = false,
-            .generateTangents = false,
         });
     }
 
     // If the model is lit but does not have normals, we'll need to generate flat normals.
     if (inPrim->material && !inPrim->material->unlit && !hasNormals) {
-            mResult->mBufferBindings.push_back({
-                .uri = "",
-                .totalSize = 0,
-                .bufferIndex = uint8_t(slot++),
-                .vertexBuffer = vertices,
-                .indexBuffer = nullptr,
-                .convertBytesToShorts = false,
-                .generateTrivialIndices = false,
-                .generateDummyData = false,
-                .generateTangents = true,
-            });
+        auto attribute = cgltf_attribute_type_normal;
+        mResult->mBufferSlots.push_back({nullptr, attribute, vertices, slot});
+        mResult->mBufferBindings.push_back({
+            .uri = "",
+            .totalSize = 0,
+            .bufferIndex = uint8_t(slot++),
+            .vertexBuffer = vertices,
+            .indexBuffer = nullptr,
+            .convertBytesToShorts = false,
+            .generateTrivialIndices = false,
+            .generateDummyData = false,
+        });
     }
 
     for (cgltf_size targetIndex = 0; targetIndex < targetsCount; targetIndex++) {
@@ -723,7 +724,16 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             const cgltf_attribute& inputAttribute = morphTarget.attributes[aindex];
             const cgltf_accessor* inputAccessor = inputAttribute.data;
             const cgltf_buffer_view* bv = inputAccessor->buffer_view;
-            if (inputAttribute.type == cgltf_attribute_type_normal) {
+            const cgltf_attribute_type attribute = inputAttribute.type;
+
+            if (attribute == cgltf_attribute_type_tangent) {
+                continue;
+            }
+
+            const int morphTarget = targetIndex + 1;
+            mResult->mBufferSlots.push_back({inputAccessor, attribute, vertices, slot, morphTarget});
+
+            if (attribute == cgltf_attribute_type_normal) {
                 mResult->mBufferBindings.push_back({
                     .uri = bv->buffer->uri,
                     .totalSize = uint32_t(bv->buffer->size),
@@ -733,14 +743,9 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                     .convertBytesToShorts = false,
                     .generateTrivialIndices = false,
                     .generateDummyData = false,
-                    .generateTangents = true,
                     .isMorphTarget = true,
                     .morphTargetIndex = (uint8_t) targetIndex,
                 });
-                continue;
-            }
-
-            if (inputAttribute.type == cgltf_attribute_type_tangent) {
                 continue;
             }
 
@@ -756,7 +761,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
                 .convertBytesToShorts = false,
                 .generateTrivialIndices = false,
                 .generateDummyData = false,
-                .generateTangents = false,
             });
         }
     }

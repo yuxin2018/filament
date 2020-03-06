@@ -174,7 +174,7 @@ struct FFilamentAsset : public FilamentAsset {
         mResourceUris = {};
         mNodeMap = {};
         mPrimMap = {};
-        mAccessorMap = {};
+        mBufferSlots = {};
         releaseSourceAsset();
     }
 
@@ -225,18 +225,21 @@ struct FFilamentAsset : public FilamentAsset {
     DependencyGraph mDependencyGraph;
 
     struct BufferSlot {
-        filament::VertexBuffer* vb;
+        const cgltf_accessor* accessor;
+        cgltf_attribute_type attribute;
+        filament::VertexBuffer* vertexBuffer;
         int bufferIndex;
+        int morphTarget; // 0 if no morphing, otherwise 1-based index
     };
 
     // Transient source data that can freed via releaseSourceData:
+    std::vector<BufferSlot> mBufferSlots;
     std::vector<BufferBinding> mBufferBindings;
     std::vector<TextureBinding> mTextureBindings;
     std::vector<const char*> mResourceUris;
     const cgltf_data* mSourceAsset = nullptr;
     tsl::robin_map<const cgltf_node*, utils::Entity> mNodeMap;
     tsl::robin_map<const cgltf_primitive*, filament::VertexBuffer*> mPrimMap;
-    tsl::robin_map<const cgltf_accessor*, std::vector<BufferSlot>> mAccessorMap;
 };
 
 FILAMENT_UPCAST(FilamentAsset)
