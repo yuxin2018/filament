@@ -172,12 +172,6 @@ static void convertBytesToShorts(uint16_t* dst, const uint8_t* src, size_t count
     }
 }
 
-static void generateTrivialIndices(uint32_t* dst, size_t numVertices) {
-    for (size_t i = 0; i < numVertices; ++i) {
-        dst[i] = i;
-    }
-}
-
 static uint32_t computeBindingOffset(const cgltf_accessor* accessor) {
     return uint32_t(accessor->offset + accessor->buffer_view->offset);
 }
@@ -322,12 +316,7 @@ bool ResourceLoader::loadResources(FFilamentAsset* asset, bool async) {
     const BufferBinding* bindings = asset->getBufferBindings();
     for (size_t i = 0, n = asset->getBufferBindingCount(); i < n; ++i) {
         auto bb = bindings[i];
-        if (bb.generateTrivialIndices) {
-            uint32_t* data32 = (uint32_t*) malloc(bb.size);
-            generateTrivialIndices(data32, bb.size / sizeof(uint32_t));
-            IndexBuffer::BufferDescriptor bd(data32, bb.size, FREE_CALLBACK);
-            bb.indexBuffer->setBuffer(engine, std::move(bd));
-        } else if (bb.convertBytesToShorts) {
+        if (bb.convertBytesToShorts) {
             const uint8_t* data8 = bb.offset + (const uint8_t*) *bb.data;
             size_t size16 = bb.size * 2;
             uint16_t* data16 = (uint16_t*) malloc(size16);

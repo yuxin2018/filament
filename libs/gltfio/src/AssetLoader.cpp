@@ -463,7 +463,6 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             .data = &bv->buffer->data,
             .indexBuffer = indices,
             .convertBytesToShorts = indicesAccessor->component_type == cgltf_component_type_r_8u,
-            .generateTrivialIndices = false
         });
     } else {
         const cgltf_size vertexCount = inPrim->attributes[0].data->count;
@@ -471,11 +470,13 @@ bool FAssetLoader::createPrimitive(const cgltf_primitive* inPrim, Primitive* out
             .indexCount(vertexCount)
             .bufferType(IndexBuffer::IndexType::UINT)
             .build(*mEngine);
-        mResult->mBufferBindings.emplace_back(BufferBinding{
-            .size = uint32_t(vertexCount * sizeof(uint32_t)),
-            .indexBuffer = indices,
-            .generateTrivialIndices = true
-        });
+        size_t indexDataSize = vertexCount * sizeof(uint32_t);
+        uint32_t* indexData = (uint32_t*) malloc(indexDataSize);
+        for (size_t i = 0; i < vertexCount; ++i) {
+            indexData[i] = i;
+        }
+        IndexBuffer::BufferDescriptor bd(indexData, indexDataSize, FREE_CALLBACK);
+        indices->setBuffer(*mEngine, std::move(bd));
     }
     mResult->mIndexBuffers.push_back(indices);
 

@@ -32,26 +32,16 @@ namespace gltfio {
  *
  * Each binding instance corresponds to one of the following:
  *
- * - One call to VertexBuffer::setBufferAt().
  * - One call to IndexBuffer::setBuffer().
  */
 struct BufferBinding {
-    const char* uri;      // unique identifier for the source blob
-    uint32_t totalSize;   // size in bytes of the source blob at the given URI
-    uint8_t bufferIndex;  // only used when the destination is a VertexBuffer
-    uint32_t offset;      // byte count used only for vertex and index buffers
-    uint32_t size;        // byte count used only for vertex and index buffers
-    void** data;          // pointer to the resource data in the source asset (if loaded)
-
-    // Only one of the following two destinations can be non-null.
-    filament::VertexBuffer* vertexBuffer;
+    const char* uri;
+    uint32_t totalSize;
+    uint32_t offset;
+    uint32_t size;
+    void** data;
     filament::IndexBuffer* indexBuffer;
-
-    bool convertBytesToShorts;   // the resource loader must convert the buffer from u8 to u16
-    bool generateTrivialIndices; // the resource loader must generate indices like: 0, 1, 2, ...
-
-    bool isMorphTarget;
-    uint8_t morphTargetIndex;
+    bool convertBytesToShorts;
 };
 
 /**
